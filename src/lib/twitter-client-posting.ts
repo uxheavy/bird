@@ -1,6 +1,7 @@
+import twitterText from 'twitter-text';
 import type { AbstractConstructor, Mixin, TwitterClientBase } from './twitter-client-base.js';
 import { TWITTER_API_BASE, TWITTER_GRAPHQL_POST_URL, TWITTER_STATUS_UPDATE_URL } from './twitter-client-constants.js';
-import { buildTweetCreateFeatures } from './twitter-client-features.js';
+import { buildNoteTweetCreateFeatures, buildTweetCreateFeatures } from './twitter-client-features.js';
 import type { CreateTweetResponse, TweetResult } from './twitter-client-types.js';
 
 export interface TwitterClientPostingMethods {
@@ -63,9 +64,20 @@ export function withPosting<TBase extends AbstractConstructor<TwitterClientBase>
       variables: Record<string, unknown>,
       features: Record<string, boolean>,
     ): Promise<TweetResult> {
+      const isNote = twitterText.parseTweet(String(variables.tweet_text)).weightedLength > 280;
+      const operation = isNote ? 'CreateNoteTweet' : 'CreateTweet';
+      if (isNote) {
+        const { dark_request: _darkRequest, ...noteVariables } = variables;
+        variables = { ...noteVariables, disallowed_reply_options: null };
+        features = buildNoteTweetCreateFeatures();
+      }
+      const failure = (error: string): TweetResult => ({
+        success: false,
+        error: isNote ? `CreateNoteTweet (over 280 weighted characters; requires X Premium): ${error}` : error,
+      });
       await this.ensureClientUserId();
-      let queryId = await this.getQueryId('CreateTweet');
-      let urlWithOperation = `${TWITTER_API_BASE}/${queryId}/CreateTweet`;
+      let queryId = await this.getQueryId(operation);
+      let urlWithOperation = `${TWITTER_API_BASE}/${queryId}/${operation}`;
 
       const buildBody = () => JSON.stringify({ variables, features, queryId });
       let body = buildBody();
@@ -82,8 +94,8 @@ export function withPosting<TBase extends AbstractConstructor<TwitterClientBase>
         // If the operation URL 404s, retry the generic endpoint.
         if (response.status === 404) {
           await this.refreshQueryIds();
-          queryId = await this.getQueryId('CreateTweet');
-          urlWithOperation = `${TWITTER_API_BASE}/${queryId}/CreateTweet`;
+          queryId = await this.getQueryId(operation);
+          urlWithOperation = `${TWITTER_API_BASE}/${queryId}/${operation}`;
           body = buildBody();
 
           response = await this.fetchWithTimeout(urlWithOperation, {
@@ -101,50 +113,46 @@ export function withPosting<TBase extends AbstractConstructor<TwitterClientBase>
 
             if (!retry.ok) {
               const text = await retry.text();
-              return { success: false, error: `HTTP ${retry.status}: ${text.slice(0, 200)}` };
+              return failure(`HTTP ${retry.status}: ${text.slice(0, 200)}`);
             }
 
             const data = (await retry.json()) as CreateTweetResponse;
 
             if (data.errors && data.errors.length > 0) {
-              const fallback = await this.tryStatusUpdateFallback(data.errors, variables);
+              const fallback = isNote ? null : await this.tryStatusUpdateFallback(data.errors, variables);
               if (fallback) {
                 return fallback;
               }
-              return { success: false, error: this.formatErrors(data.errors) };
+              return failure(this.formatErrors(data.errors));
             }
 
-            const tweetId = data.data?.create_tweet?.tweet_results?.result?.rest_id;
+            const tweetId = (isNote ? data.data?.notetweet_create : data.data?.create_tweet)?.tweet_results?.result
+              ?.rest_id;
             if (tweetId) {
               return { success: true, tweetId };
             }
 
-            return { success: false, error: 'Tweet created but no ID returned' };
+            return failure('Tweet created but no ID returned');
           }
         }
 
         if (!response.ok) {
           const text = await response.text();
-          return {
-            success: false,
-            error: `HTTP ${response.status}: ${text.slice(0, 200)}`,
-          };
+          return failure(`HTTP ${response.status}: ${text.slice(0, 200)}`);
         }
 
         const data = (await response.json()) as CreateTweetResponse;
 
         if (data.errors && data.errors.length > 0) {
-          const fallback = await this.tryStatusUpdateFallback(data.errors, variables);
+          const fallback = isNote ? null : await this.tryStatusUpdateFallback(data.errors, variables);
           if (fallback) {
             return fallback;
           }
-          return {
-            success: false,
-            error: this.formatErrors(data.errors),
-          };
+          return failure(this.formatErrors(data.errors));
         }
 
-        const tweetId = data.data?.create_tweet?.tweet_results?.result?.rest_id;
+        const tweetId = (isNote ? data.data?.notetweet_create : data.data?.create_tweet)?.tweet_results?.result
+          ?.rest_id;
         if (tweetId) {
           return {
             success: true,
@@ -152,15 +160,9 @@ export function withPosting<TBase extends AbstractConstructor<TwitterClientBase>
           };
         }
 
-        return {
-          success: false,
-          error: 'Tweet created but no ID returned',
-        };
+        return failure('Tweet created but no ID returned');
       } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
+        return failure(error instanceof Error ? error.message : String(error));
       }
     }
 

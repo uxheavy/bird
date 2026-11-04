@@ -78,6 +78,66 @@ describe('TwitterClient tweet', () => {
     expect(body.features.creator_subscriptions_tweet_preview_api_enabled).toBe(true);
   });
 
+  it.each([
+    ['a'.repeat(280), 'CreateTweet'],
+    ['a'.repeat(281), 'CreateNoteTweet'],
+    [`${'a'.repeat(256)} https://example.com/${'x'.repeat(300)}`, 'CreateTweet'],
+    [`${'a'.repeat(257)} https://example.com/${'x'.repeat(300)}`, 'CreateNoteTweet'],
+    ['界'.repeat(140), 'CreateTweet'],
+    ['界'.repeat(141), 'CreateNoteTweet'],
+    ['👨‍👩‍👧‍👦'.repeat(140), 'CreateTweet'],
+    ['👨‍👩‍👧‍👦'.repeat(141), 'CreateNoteTweet'],
+  ])('routes weighted text to %s (%s)', async (text, operation) => {
+    const field = operation === 'CreateTweet' ? 'create_tweet' : 'notetweet_create';
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: { [field]: { tweet_results: { result: { rest_id: '123' } } } },
+      }),
+    });
+    const result = await new TwitterClient({ cookies: validCookies }).tweet(text);
+    expect(result).toEqual({ success: true, tweetId: '123' });
+    expect(String(mockFetch.mock.calls[0][0])).toContain(`/${operation}`);
+  });
+
+  it('sends long replies with media through the note mutation', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: { notetweet_create: { tweet_results: { result: { rest_id: '456' } } } },
+      }),
+    });
+    const text = 'a'.repeat(281);
+    const result = await new TwitterClient({ cookies: validCookies }).reply(text, '123', ['789']);
+    expect(result).toEqual({ success: true, tweetId: '456' });
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.variables).toEqual({
+      tweet_text: text,
+      reply: { in_reply_to_tweet_id: '123', exclude_reply_user_ids: [] },
+      media: { media_entities: [{ media_id: '789', tagged_users: [] }], possibly_sensitive: false },
+      semantic_annotation_ids: [],
+      disallowed_reply_options: null,
+    });
+    expect(body.queryId).toBe('seOZkIS8AysCGfPo6yYPVA');
+    expect(body.features.rweb_cashtags_composer_attachment_enabled).toBe(true);
+    expect(body.features.longform_notetweets_inline_media_enabled).toBe(false);
+  });
+
+  it('preserves note rejection reasons and never falls back to a short post', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        errors: [{ message: 'Not authorized', code: 226 }],
+      }),
+    });
+    const result = await new TwitterClient({ cookies: validCookies }).tweet('a'.repeat(281));
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Not authorized (226)');
+    expect(result.error).toContain('Premium');
+    expect(result.error).toContain('over 280');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it('supports attaching media IDs', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

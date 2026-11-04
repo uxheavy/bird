@@ -357,6 +357,7 @@ export interface ListsResult {
 
 export interface CreateTweetResponse {
   data?: {
+    notetweet_create?: NonNullable<CreateTweetResponse['data']>['create_tweet'];
     create_tweet?: {
       tweet_results?: {
         result?: {

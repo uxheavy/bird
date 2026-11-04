@@ -58,7 +58,18 @@ export abstract class TwitterClientBase {
       return;
     }
     try {
-      await runtimeQueryIds.refresh(TARGET_QUERY_ID_OPERATIONS, { force: true });
+      await runtimeQueryIds.refresh(TARGET_QUERY_ID_OPERATIONS, {
+        force: true,
+        discoveryFetchImpl: (url, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set('cookie', this.cookieHeader);
+          return this.fetchWithTimeout(url instanceof Request ? url.url : url.toString(), {
+            ...init,
+            headers,
+            redirect: 'error',
+          });
+        },
+      });
     } catch {
       // ignore refresh failures; callers will fall back to baked-in IDs
     }

@@ -23,6 +23,7 @@ describe('runtime-query-ids', () => {
     `;
     const js = [
       `e.exports={queryId:"AAA",operationName:"CreateTweet"}`,
+      `e.exports={queryId:"NOTE",operationName:"CreateNoteTweet"}`,
       `e.exports={queryId:"BBB",operationName:"CreateRetweet"}`,
       `e.exports={queryId:"CCC",operationName:"FavoriteTweet"}`,
       `e.exports={queryId:"DDD",operationName:"TweetDetail"}`,
@@ -48,12 +49,24 @@ describe('runtime-query-ids', () => {
       ttlMs: 1000,
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
+    const pageFetch = vi.fn((url: string | URL) => fetchMock(url));
     const info = await store.refresh(
-      ['CreateTweet', 'CreateRetweet', 'FavoriteTweet', 'TweetDetail', 'SearchTimeline', 'UserArticlesTweets'],
-      { force: true },
+      [
+        'CreateTweet',
+        'CreateNoteTweet',
+        'CreateRetweet',
+        'FavoriteTweet',
+        'TweetDetail',
+        'SearchTimeline',
+        'UserArticlesTweets',
+      ],
+      { force: true, discoveryFetchImpl: pageFetch },
     );
 
+    expect(pageFetch).toHaveBeenCalledTimes(4);
+    expect(pageFetch.mock.calls.every(([url]) => String(url).startsWith('https://x.com/'))).toBe(true);
     expect(info?.snapshot.ids.CreateTweet).toBe('AAA');
+    expect(info?.snapshot.ids.CreateNoteTweet).toBe('NOTE');
     expect(info?.snapshot.ids.TweetDetail).toBe('DDD');
     expect(info?.cachePath).toBe(cachePath);
 

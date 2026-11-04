@@ -14,6 +14,7 @@ export const SETTINGS_NAME_REGEX = /"name":"([^"\\]*(?:\\.[^"\\]*)*)"/;
 // scripts/update-query-ids.ts. The fallback values keep the client usable if
 // the file is missing or incomplete.
 export const FALLBACK_QUERY_IDS = {
+  CreateNoteTweet: 'seOZkIS8AysCGfPo6yYPVA',
   CreateTweet: 'TAJw1rBsjAtdNgTdlo2oeg',
   CreateRetweet: 'ojPdsZsimiJrUGLR1sjUtA',
   FavoriteTweet: 'lI07N6Otwv1PhnEgXILM7A',

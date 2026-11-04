@@ -73,7 +73,10 @@ export type RuntimeQueryIdStore = {
   ttlMs: number;
   getSnapshotInfo: () => Promise<RuntimeQueryIdSnapshotInfo | null>;
   getQueryId: (operationName: string) => Promise<string | null>;
-  refresh: (operationNames: string[], opts?: { force?: boolean }) => Promise<RuntimeQueryIdSnapshotInfo | null>;
+  refresh: (
+    operationNames: string[],
+    opts?: { force?: boolean; discoveryFetchImpl?: typeof fetch },
+  ) => Promise<RuntimeQueryIdSnapshotInfo | null>;
   clearMemory: () => void;
 };
 
@@ -277,7 +280,7 @@ export function createRuntimeQueryIdStore(options: RuntimeQueryIdsOptions = {}):
 
   const refresh = async (
     operationNames: string[],
-    opts: { force?: boolean } = {},
+    opts: { force?: boolean; discoveryFetchImpl?: typeof fetch } = {},
   ): Promise<RuntimeQueryIdSnapshotInfo | null> => {
     if (refreshInFlight) {
       return refreshInFlight;
@@ -290,7 +293,7 @@ export function createRuntimeQueryIdStore(options: RuntimeQueryIdsOptions = {}):
       }
 
       const targets = new Set(operationNames);
-      const bundleUrls = await discoverBundles(fetchImpl);
+      const bundleUrls = await discoverBundles(opts.discoveryFetchImpl ?? fetchImpl);
       const discovered = await fetchAndExtract(fetchImpl, bundleUrls, targets);
       if (discovered.size === 0) {
         return current ?? null;

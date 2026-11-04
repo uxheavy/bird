@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1-uxheavy.0 — 2026-11-04
+
+- Route posts and replies over 280 X weighted characters through CreateNoteTweet, including media.
+- Refresh mutation IDs from authenticated discovery pages; retain short-post behavior.
+- Include Premium requirements and upstream reasons in long-post failures.
+
 ## 0.7.1 — 2026-10-05
 
 ### Changed
