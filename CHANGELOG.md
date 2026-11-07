@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1-uxheavy.1 — 2026-11-08
+
+- Sign `x-client-transaction-id` per request from X's web app keys. X silently dropped unsigned posts, which showed up as "Tweet created but no ID returned".
+- Fail a write before sending it when its transaction ID cannot be signed.
+
 ## 0.8.1-uxheavy.0 — 2026-11-04
 
 - Route posts and replies over 280 X weighted characters through CreateNoteTweet, including media.
