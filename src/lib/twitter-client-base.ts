@@ -4,6 +4,7 @@ import { type OperationName, QUERY_IDS, TARGET_QUERY_ID_OPERATIONS } from './twi
 import type { CurrentUserResult, TwitterClientOptions } from './twitter-client-types.js';
 import { normalizeQuoteDepth } from './twitter-client-utils.js';
 import { XRequestLimiter } from './x-request-limiter.js';
+import { signTransactionId } from './x-transaction-signer.js';
 
 // biome-ignore lint/suspicious/noExplicitAny: TS mixin base constructor requirement.
 export type Constructor<T = object> = new (...args: any[]) => T;
@@ -90,6 +91,7 @@ export abstract class TwitterClientBase {
   }
 
   private async fetchRequest(url: string, init: RequestInit): Promise<Response> {
+    init = await this.withSignedTransactionId(url, init);
     if (!this.timeoutMs || this.timeoutMs <= 0) {
       return fetch(url, init);
     }
@@ -102,6 +104,25 @@ export abstract class TwitterClientBase {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  private async withSignedTransactionId(url: string, init: RequestInit): Promise<RequestInit> {
+    const headers = new Headers(init.headers);
+    if (process.env.NODE_ENV === 'test' || !headers.has('x-client-transaction-id')) {
+      return init;
+    }
+    const method = (init.method ?? 'GET').toUpperCase();
+    try {
+      headers.set('x-client-transaction-id', await signTransactionId(method, new URL(url).pathname));
+    } catch (error) {
+      if (method !== 'GET') {
+        throw new Error(
+          `Could not sign x-client-transaction-id, so X would silently drop this write: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return init;
+    }
+    return { ...init, headers };
   }
 
   protected getHeaders(): Record<string, string> {
